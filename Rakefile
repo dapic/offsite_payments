@@ -36,4 +36,18 @@ namespace :test do
     t.libs << 'test'
     t.verbose = true
   end
+
+  Rake::TestTask.new(:alipay) do |t|
+    t.pattern = 'test/unit/integrations/alipay/*_test.rb'
+    t.ruby_opts << '-rubygems'
+    t.libs << 'test'
+    t.verbose = true
+  end
+
+  #Rake::TestTask.new(:tenpay) do |t|
+  #  t.pattern = 'test/unit/integrations/tenpay/*_test.rb'
+  #  t.ruby_opts << '-rubygems'
+  #  t.libs << 'test'
+    #t.verbose = true
+  #end
 end
