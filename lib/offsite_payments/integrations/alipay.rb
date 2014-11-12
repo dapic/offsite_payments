@@ -5,59 +5,50 @@ module OffsitePayments #:nodoc:
 
       mattr_accessor :service_url
       self.service_url = 'https://mapi.alipay.com/gateway.do?_input_charset=utf-8'
+      FIELDS_NOT_TO_BE_SIGNED = %w(sign sign_type)
 
       def self.notification(post, options = {})
-        Notification.new(post, options = {})
+        Notification.new(post, options)
       end
 
-      def self.return(query_string)
-        Return.new(query_string)
+      def self.return(post, options = {})
+        Return.new(post, options )
       end
 
-      # contains functions to actually create the signture of the PDU and verify it
-      module Common
-        #TODO: this is obsolete
-        def verify_sign_old 
-          sign_type  = @params.delete("sign_type")
-          sign       = @params.delete("sign")
-
-          md5_string = @params.sort.collect do |s|
-            unless s[0] == "notify_id"
-              s[0]+"="+CGI.unescape(s[1])
-            else
-              s[0]+"="+s[1]
-            end
-          end
-          Digest::MD5.hexdigest(md5_string.join("&")+KEY) == sign.downcase
+      # Generate the required signature as specified in the "sign_type" field that's passed in in the "fields" argument
+      # TODO: Only 'MD5' is supported at this point
+      def self.generate_signature(fields, key)
+        case sign_type = fields["sign_type"]
+        when 'MD5'
+          Digest::MD5.hexdigest(signed_string(fields, key))
+        when nil
+          raise OffsitePayments::ActionViewHelperError, "'sign_type' must be specified in the fields"
+        else
+          raise OffsitePayments::ActionViewHelperError, "sign_type '#{sign_type}' not yet supported"
         end
+      end
 
-        def verify_sign
-          @params["sign"] == Digest::MD5.hexdigest(signed_string)
-        end
-
-        def create_sign
-          Digest::MD5.hexdigest(signed_string)
-        end
-
-        def signed_string( fields = nil )
-          #puts "#fields is #{@fields.inspect}"
-          (fields || @fields).reject do |s|
-            fields_not_to_be_signed.include?(s)
+      # Generate the string to sign on from the fields. Currently Alipay doc specifies that the fields are arranged alphabetically.
+      def self.signed_string(fields, key)
+          fields.reject do |s|
+            FIELDS_NOT_TO_BE_SIGNED.include?(s)
           end
           .sort.collect do |s|
             s[0]+"="+CGI.unescape(s[1])
           end
           .join("&")+key
-        end
+      end
 
-        def key
-          @api_key
-        end
+      # contains functions to common to both "Notification" and "Return"
+      module Common
 
-        def fields_not_to_be_signed
-          %w(sign sign_type)
+        # Verifies that the signature in the "sign" field is the same as would be generated with our "key"
+        # Depends on the class has the @params and @key
+        #   * @params the fields to be signed
+        #   * @key the api key assigned by Alipay, corresponding to the "PID"
+        def verify_signature
+          @params["sign"] == Alipay.generate_signature(@params, @key)
         end
-
       end
 
       # the Helper is used to 
@@ -69,7 +60,6 @@ module OffsitePayments #:nodoc:
       # * contains functions such as "sign", which entails putting a MD5 hash "signature" on a
       #   special field called "sign"
       class Helper < OffsitePayments::Helper
-        include Common
         CREATE_DIRECT_PAY_BY_USER = 'create_direct_pay_by_user'
         CREATE_PARTNER_TRADE_BY_BUYER = 'create_partner_trade_by_buyer'
         TRADE_CREATE_BY_BUYER = 'trade_create_by_buyer'
@@ -134,8 +124,8 @@ module OffsitePayments #:nodoc:
         mapping :buyer_msg, 'buyer_msg'
 
         def initialize(order, account, options = {})
-          @api_key = options.delete(:key) || "need key here"
-          options.delete(:pid) #this should be passed in the "account" argument
+          @key = options.delete(:key) || "need key here"
+          options.delete(:pid) #this should be passed in via the "account" argument
           #this :seller must be deleted from options, or it would fail the "assert_valid_keys" in "super" 
           seller = options.delete(:seller)
           super
@@ -143,9 +133,8 @@ module OffsitePayments #:nodoc:
         end
 
         def sign
-          add_field('sign', create_sign)
           add_field('sign_type', 'MD5')
-          nil
+          add_field('sign', Alipay.generate_signature(@fields, @key))
         end
 
         #this is for payment. only tested for create_direct_pay_by_user(即时到账)
@@ -161,8 +150,14 @@ module OffsitePayments #:nodoc:
       class Notification < OffsitePayments::Notification
         include Common
 
+        def initialize(post, options = {})
+          super
+          @key = options[:key] || raise(RuntimeError, "key not provided to generate signature")
+        end
+
         def complete?
-          trade_status == "TRADE_FINISHED"
+          # TRADE_SUCCESS is the success status for 开通了高级即时到账或机票分销产品后
+          %w(TRADE_FINISHED TRADE_SUCCESS).include? trade_status
         end
 
         def pending?
@@ -174,8 +169,7 @@ module OffsitePayments #:nodoc:
         end
 
         def acknowledge
-          raise StandardError.new("Faulty alipay result: ILLEGAL_SIGN") unless verify_sign
-          true
+          verify_signature || raise(ActionViewHelperError, "Invalid Alipay HTTP signature")
         end
 
         ['extra_common_param', 'notify_type', 'notify_id', 'out_trade_no', 'trade_no', 'payment_type', 'subject', 'body',
@@ -220,20 +214,22 @@ module OffsitePayments #:nodoc:
            EOF
          end
 
-         private
+         def gross
+           @params['price']
+         end
 
-         # Take the posted data and move the relevant data into a hash
-         def parse(post)
-           @raw = post
-           for line in post.split('&')
-             key, value = *line.scan( %r{^(\w+)\=(.*)$} ).flatten
-             params[key] = CGI.unescape(value || '')
-           end
+         def currency
+           @params['currency'] || 'CNY'
          end
       end
 
       class Return < OffsitePayments::Return
         include Common
+
+        def initialize(post, options = {})
+          super
+          @key = options[:key] || raise(RuntimeError, "key not provided to generate signature")
+        end
 
         def order
           @params["out_trade_no"]
@@ -243,12 +239,8 @@ module OffsitePayments #:nodoc:
           @params["total_fee"]
         end
 
-        def initialize(query_string)
-          super
-        end
-
         def success?
-          unless verify_sign
+          unless verify_signature(@params, @key)
             @message = "Alipay Error: ILLEGAL_SIGN"
             return false
           end
