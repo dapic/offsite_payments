@@ -4,8 +4,7 @@ class AlipayNotificationTest < Test::Unit::TestCase
   include OffsitePayments::Integrations
 
   def setup
-    @credential = fixtures(:'alipay-sgcb')
-    @alipay = Alipay::Notification.new(http_raw_data, key: @credential[:key])
+    @alipay = Alipay::Notification.new(http_raw_data, key: fixtures(:alipay)[:key])
   end
 
   def test_accessors
@@ -60,7 +59,7 @@ class AlipayNotificationTest < Test::Unit::TestCase
   private
   def http_raw_data
     <<-END_POST
-discount=0.00&payment_type=1&subject=%E8%AE%A2%E5%8D%95%E7%BC%96%E5%8F%B7%3AR990240665&trade_no=2014111159601788&buyer_email=18611543280&gmt_create=2014-11-11+17%3A58%3A50&notify_type=trade_status_sync&quantity=1&out_trade_no=R990240665&seller_id=2088611493982911&notify_time=2014-11-11+17%3A59%3A23&body=%5B%22KOSE%E9%AB%98%E4%B8%9D%E9%9B%AA%E8%82%8C%E7%B2%BE%E6%B4%97%E9%A2%9C%E4%B9%B3%22%5D&trade_status=TRADE_SUCCESS&is_total_fee_adjust=N&total_fee=1.43&gmt_payment=2014-11-11+17%3A59%3A23&seller_email=acct-ali%40shiguangcaibei.com&price=1.43&buyer_id=2088902582208882&notify_id=1d583bc9cf21ed879bcd428fd53ed5e16w&use_coupon=N&sign_type=MD5&sign=0962daa33f5390600d9ebd053ef07506
+discount=0.00&payment_type=1&subject=%E8%AE%A2%E5%8D%95%E7%BC%96%E5%8F%B7%3AR990240665&trade_no=2014111159601788&buyer_email=18611543280&gmt_create=2014-11-11+17%3A58%3A50&notify_type=trade_status_sync&quantity=1&out_trade_no=R990240665&seller_id=2088611493982911&notify_time=2014-11-11+17%3A59%3A23&body=%5B%22KOSE%E9%AB%98%E4%B8%9D%E9%9B%AA%E8%82%8C%E7%B2%BE%E6%B4%97%E9%A2%9C%E4%B9%B3%22%5D&trade_status=TRADE_SUCCESS&is_total_fee_adjust=N&total_fee=1.43&gmt_payment=2014-11-11+17%3A59%3A23&seller_email=acct-ali%40shiguangcaibei.com&price=1.43&buyer_id=2088902582208882&notify_id=1d583bc9cf21ed879bcd428fd53ed5e16w&use_coupon=N&sign_type=MD5&sign=0d10403a54cb923c67f70266d188c0ce
 END_POST
   end
 end
