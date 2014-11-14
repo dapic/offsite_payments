@@ -17,11 +17,6 @@ class AlipayModuleTest < Test::Unit::TestCase
       @helper.body = '["补水面膜"]'
   end
 
-  def test_notification_method
-    assert_instance_of Alipay::Notification, Alipay.notification('name=dapic', { key: _key} )
-    assert_instance_of Alipay::Return, Alipay.return('name=dapic', { key: _key} )
-  end
-
   def test_generate_signed_string
     assert_equal '_input_charset=utf-8&body=["补水面膜"]&notify_url=http://test.shiguangcaibei.com/alipay_checkout/notify&out_trade_no=R231325061&partner=2088002627298374&payment_type=1&return_url=http://test.shiguangcaibei.com/alipay_checkout/done&seller_email=areq22@aliyun.com&service=create_direct_pay_by_user&subject=订单编号:R231325061&total_fee=327.0f4y25qc539qakg734vn2jpqq6gmybxoz', Alipay.signed_string(@helper.form_fields, _key)
     #assert_equal '_input_charset=utf-8&body=["补水面膜"]&notify_url=http://test.shiguangcaibei.com:3000/alipay_checkout/notify&out_trade_no=R300075000&partner=2088002627298374&payment_type=1&return_url=http://test.shiguangcaibei.com:3000/alipay_checkout/done&seller_email=areq22@aliyun.com&service=create_direct_pay_by_user&subject=订单编号:R300075000&total_fee=1.37f4y25qc539qakg734vn2jpqq6gmybxoz', Alipay.signed_string(@helper.form_fields, fixtures(:alipay)[:key])
