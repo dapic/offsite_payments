@@ -276,7 +276,8 @@ module OffsitePayments #:nodoc:
         end
 
         def message
-          @message
+#          @message
+          "#{out_trade_no},#{Money.new(amount*100, 'CNY')} => #{trade_status}"
         end
 
         ['exterface'].each do |param|
