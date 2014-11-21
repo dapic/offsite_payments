@@ -7,6 +7,10 @@ module OffsitePayments#:nodoc:
       self.service_url = 'https://gw.tenpay.com/gateway/pay.htm'
       FIELDS_NOT_TO_BE_SIGNED = %w(sign)
 
+      def self.return(post, options = {})
+        Notification.new(post, options)
+      end
+
       def self.notification(post, options = {})
         Notification.new(post, options)
       end
@@ -176,6 +180,14 @@ module OffsitePayments#:nodoc:
 
         def amount
           total_fee
+        end
+
+        def success?
+          0 == trade_state
+        end
+
+        def message
+          "#{out_trade_no},#{Money.new(amount*100, 'CNY')} => #{trade_status}"
         end
 
         %w(sign_type service_version input_charset sign pay_info partner bank_type bank_billno notify_id transaction_id out_trade_no attach buyer_alias).each do |param|
