@@ -130,7 +130,7 @@ module OffsitePayments #:nodoc:
           sign if self.sign.nil?
           url = URI.parse(OffsitePayments::Integrations::Alipay.service_url)
           # we don't use "to_query" here since that's a Rails functionality
-          url.query = ( Rack::Utils.parse_nested_query(url.query).merge(self.form_fields) ).collect{|s|s[0]+"="+CGI.escape(s[1])}.join('&')
+          url.query = ( Rack::Utils.parse_nested_query(url.query).merge(self.form_fields) ).sort.collect{|s|s[0]+"="+CGI.escape(s[1])}.join('&')
           url
         end
       end
