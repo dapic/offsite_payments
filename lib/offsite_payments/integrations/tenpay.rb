@@ -1,6 +1,7 @@
 # encoding: utf-8
 module OffsitePayments#:nodoc:
   module Integrations #:nodoc:
+    # http://www.tenpay.com
     module Tenpay
 
       mattr_accessor :service_url
@@ -18,7 +19,7 @@ module OffsitePayments#:nodoc:
       # Generate the required signature as specified in the "sign_type" field that's passed in in the "fields" argument
       # TODO: Only 'MD5' is supported at this point
       def self.generate_signature(fields, key)
-#        log.debug("string to be signed by tenpay is #{signed_string(fields, key)}")
+        #        log.debug("string to be signed by tenpay is #{signed_string(fields, key)}")
         #puts ("string to be signed by tenpay is #{signed_string(fields, key)}")
         case sign_type = fields["sign_type"]
         when 'MD5'
@@ -220,26 +221,26 @@ module OffsitePayments#:nodoc:
                Money.new(params['#{param}'].to_i, currency)
              end
              EOF
+        end
 
-             def currency
-               case fee_type
-               when 1;'CNY';
-               else; raise 'unsupported currency'
-               end
-             end
+        def currency
+          case fee_type
+          when 1;'CNY';
+          else; raise 'unsupported currency'
+          end
+        end
 
-             # Take the posted data and move the relevant data into a hash
-             def parse(post)
+        # Take the posted data and move the relevant data into a hash
+        def parse(post)
           @params ||= Hash.new
-               @raw = post
-               for line in post.split('&')
-                 key, value = *line.scan( %r{^(\w+)\=(.*)$} ).flatten
-                 params[key] = CGI.unescape(value || '') if key.present?
-                 #puts "parsed #{key} => '#{value}', #{ key.present? ? 'aded' : 'NOT added' }"
-               end
-             end
+          @raw = post
+          for line in post.split('&')
+            key, value = *line.scan( %r{^(\w+)\=(.*)$} ).flatten
+            params[key] = CGI.unescape(value || '') if key.present?
+            #puts "parsed #{key} => '#{value}', #{ key.present? ? 'aded' : 'NOT added' }"
+          end
         end
       end
     end
-  end
+end
 end
