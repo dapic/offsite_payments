@@ -752,3 +752,12 @@ wirecard_checkout_page:
 world_pay_gateway:
   login: LOGIN
   password: PASSWORD
+
+wxpay-sample_data:
+  out_trade_no: R710881279_XWE4TKU6
+  total_fee: 275
+  notify_url: http://test.shiguangcaibei.com/payment/wxpay/notify
+  spbill_create_ip: '106.2.199.16'
+  body: KOSE高丝雪肌精洗颜乳
+  trade_type: NATIVE
+
