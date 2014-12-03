@@ -3,10 +3,15 @@
 module OffsitePayments#:nodoc:
   module Integrations #:nodoc:
     # http://mp.weixin.qq.com
+    # This module contains the communication layer. It should not make business decisions
     module Wxpay
 
+      class CommunicationError < RuntimeError; end
+      class CredentialMismatchError < RuntimeError; end
+      class UnVerifiableResponseError < RuntimeError; end
+      class BusinessError < RuntimeError; end
       mattr_accessor :logger, :credentials
-      mattr_reader :key
+      mattr_reader :key, :appsecret
 
       UNIFIEDORDER_URL = 'https://api.mch.weixin.qq.com/pay/unifiedorder'
       ORDERQUERY_URL   = 'https://api.mch.weixin.qq.com/pay/orderquery'
@@ -27,6 +32,9 @@ module OffsitePayments#:nodoc:
       end
 
       def self.generate_signature(fields)
+        #logger.debug("fields are #{fields.inspect}")
+        #logger.debug("signed_string are #{signed_string(fields)}")
+
         Digest::MD5.hexdigest(signed_string(fields)).upcase
       end
 
@@ -40,8 +48,13 @@ module OffsitePayments#:nodoc:
       end
 
       def self.credentials=(cred)
-        @@key ||= cred.delete(:key)
+        @@key         = cred.delete(:key)
+        @@appsecret   = cred.delete(:appsecret)
         @@credentials = cred
+      end
+
+      def self.logger
+        @@logger ||= Logger.new(STDOUT)
       end
 
       module Common
@@ -52,16 +65,13 @@ module OffsitePayments#:nodoc:
             self.class::REQUIRED_FIELDS.all? {|f| params[f].present?}
         end
 
-        def logger
-          Wxpay.logger
-        end
-
         def params
           @params ||= @fields
         end
 
         def verify_signature
-          @params["sign"] == Wxpay.generate_signature(@params)
+          (@params["sign"] == Wxpay.generate_signature(@params))
+          .tap {|r| Wxpay.logger.debug("#{__LINE__}: Got signature #{@params["sign"]} while expecting #{Wxpay.generate_signature(@params)}.") unless r }
         end
 
         def acknowledge
@@ -89,6 +99,7 @@ module OffsitePayments#:nodoc:
             msg = "Requiring #{REQUIRED_FIELDS.sort.to_s} \n Getting #{Wxpay.credentials.merge(biz_data).keys.map(&:to_s).sort.to_s}"
             raise "Not valid #{self.class.name}, because #{msg}"
           end
+          self.class.logger = Wxpay.logger
         end
 
         def sign
@@ -97,20 +108,33 @@ module OffsitePayments#:nodoc:
         end
 
         def process
-          post_response = ssl_post(API_CONFIG[API_REQUEST][:request_url], self.to_xml)
-          logger.debug("got response from wxpay: #{post_response.inspect}")
-          @response = ApiResponse.parse_response(API_REQUEST, post_response)
-          throw :done, [:comm_failure, @response.return_code] unless @response.comm_success?
-          throw :done, [:credential_mismatch_failure, @response.params] unless @response.credentials_match?(params)
-          throw :done, :unverifiable_response unless @response.acknowledge
-          throw :done, [:biz_failure, @response.error_code, @response.error_des] unless @response.biz_success?
-          throw :done, @response.params
+          Wxpay.logger.info("logger level is set to #{Wxpay.logger.level} <==")
+          Wxpay.logger.debug("sending to #{API_CONFIG[self.class::API_REQUEST][:request_url]}")
+          Wxpay.logger.debug("payload is #{self.to_xml}")
+
+          post_response = ssl_post(API_CONFIG[self.class::API_REQUEST][:request_url], self.to_xml)
+          Wxpay.logger.debug("got response from wxpay: #{post_response.inspect}")
+          @response = ApiResponse.parse_response(self.class::API_REQUEST, post_response)
+          raise CommunicationError, @response.return_code unless @response.comm_success?
+          raise CredentialMismatchError unless @response.credentials_match?(params)
+          raise UnVerifiableResponseError  unless @response.acknowledge
+          #throw :error, [@response.biz_failure_code.to_sym, @response] unless @response.biz_success?
+
+          @response
+          #raise BusinessError, "#{@response.biz_failure_code}: #{@response.biz_failure_desc}" unless @response.biz_success?
+          #throw :done, [:comm_failure, @response.return_code] unless @response.comm_success?
+          #throw :done, [:credential_mismatch_failure, @response.params] unless @response.credentials_match?(params)
+          #throw :done, :unverifiable_response unless @response.acknowledge
+          #throw :done, [:biz_failure, @response.biz_failure_code, @response.biz_failure_desc] unless @response.biz_success?
+          #throw :done, @response
+          #
         end
       end
 
       class UnifiedOrderHelper < ::OffsitePayments::Helper 
         include Common
         include CommonHelper
+        include ActiveMerchant::PostsData
         REQUIRED_FIELDS = %w(body out_trade_no total_fee spbill_create_ip notify_url trade_type) 
         API_REQUEST = :unifiedorder
         def initialize(data)
@@ -121,6 +145,7 @@ module OffsitePayments#:nodoc:
       class ShortUrlHelper < ::OffsitePayments::Helper
         include Common
         include CommonHelper
+        include ActiveMerchant::PostsData
         REQUIRED_FIELDS = %w(long_url) 
         API_REQUEST = :shorturl
         def initialize(data)
@@ -135,14 +160,15 @@ module OffsitePayments#:nodoc:
         REQUIRED_FIELDS = %w(return_code)
         REQUIRED_RETURN_CREDENTIAILS = %w(appid mch_id)
         def initialize(http_response, options = {})
-          resp_xml = Nokogiri::XML(http_response.body.gsub(/\n/,'').gsub(/>\s*</, "><"))
+          Wxpay.logger.debug("response is #{http_response}")
+          resp_xml = Nokogiri::XML(http_response.gsub(/\n/,'').gsub(/>\s*</, "><"))
           @params = {}
 
           #logger.debug("resp_xml is #{resp_xml.to_xml}")
           #logger.debug("resp_is #{resp_xml.to_s}")
           #logger.debug('')
           resp_xml.xpath("//xml").children.each {|a|
-            logger.debug("assigning #{a.name} to #{a.content}")
+            #logger.debug("assigning #{a.name} to #{a.content}")
             @params[a.name] = a.content 
           }
           raise "Not valid #{self.class.name}" unless has_all_required_fields?

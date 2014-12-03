@@ -753,11 +753,30 @@ world_pay_gateway:
   login: LOGIN
   password: PASSWORD
 
+wxpay:
+  appid: wx599b0e05f1873032
+  appsecret: eeb2b34f01fc161d4f91c3bd9a6b71c5
+  key: 14d491663f92195fad0276f4395598aa
+  mch_id: '10011924'
+
 wxpay-sample_data:
-  out_trade_no: R710881279_XWE4TKU6
-  total_fee: 275
-  notify_url: http://test.shiguangcaibei.com/payment/wxpay/notify
-  spbill_create_ip: '106.2.199.16'
-  body: KOSE高丝雪肌精洗颜乳
-  trade_type: NATIVE
+  unifiedorder_req:
+    out_trade_no: R710881279_XWE4TKU6
+    total_fee: 275
+    notify_url: http://test.shiguangcaibei.com/payment/wxpay/notify
+    spbill_create_ip: '106.2.199.16'
+    body: KOSE高丝雪肌精洗颜乳
+    trade_type: NATIVE
+  unifiedorder_resp_success: 
+    '<xml><return_code><![CDATA[SUCCESS]]></return_code>
+    <return_msg><![CDATA[OK]]></return_msg>
+    <appid><![CDATA[wx599b0e05f1873032]]></appid>
+    <mch_id><![CDATA[10011924]]></mch_id>
+    <nonce_str><![CDATA[gHnTo0kDg56P0Y6T]]></nonce_str>
+    <sign><![CDATA[06FB700B48191AFF85F34EBA78504832]]></sign>
+    <result_code><![CDATA[SUCCESS]]></result_code>
+    <prepay_id><![CDATA[wx20141125175855641523fd940589543551]]></prepay_id>
+    <trade_type><![CDATA[NATIVE]]></trade_type>
+    <code_url><![CDATA[weixin://wxpay/bizpayurl?sr=tVLUP6i]]></code_url>
+    </xml>'
 
