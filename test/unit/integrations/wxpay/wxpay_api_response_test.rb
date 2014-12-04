@@ -31,6 +31,19 @@ class WxpayApiResponseTest < Test::Unit::TestCase
     assert_equal 'ORDERPAID', @resp.biz_failure_code
   end
 
+  def test_order_query_response_orderpaid
+    @resp = Wxpay::ApiResponse.parse_response(:orderquery, order_query_response_orderpaid)
+    assert @resp.comm_success?
+    assert @resp.acknowledge
+    assert @resp.biz_success?
+    assert_equal 'SUCCESS', @resp.trade_state
+    assert_equal 'o2Hzljt7pBjEvfD8JOZdXDToSZSc', @resp.openid
+    assert_equal '1009000276201411250006190524', @resp.transaction_id
+    assert_equal 'CNY', @resp.currency
+    assert_equal Money.new(20, 'CNY'), @resp.total_fee
+    assert_equal Money.new(20, 'CNY'), @resp.total_fee
+  end
+
   private
 
   def unified_order_response_failure1
@@ -66,4 +79,30 @@ class WxpayApiResponseTest < Test::Unit::TestCase
     <err_code_des><![CDATA[该订单已支付]]></err_code_des>
     </xml>'
   end
+
+  def order_query_response_orderpaid
+    '
+    <xml><return_code><![CDATA[SUCCESS]]></return_code>
+    <return_msg><![CDATA[OK]]></return_msg>
+    <appid><![CDATA[wx599b0e05f1873032]]></appid>
+    <mch_id><![CDATA[10011924]]></mch_id>
+    <nonce_str><![CDATA[DlyCp5mLJVO52fEY]]></nonce_str>
+    <sign><![CDATA[C24F06C4D89D50A9660CD032E7141A07]]></sign>
+    <result_code><![CDATA[SUCCESS]]></result_code>
+    <openid><![CDATA[o2Hzljt7pBjEvfD8JOZdXDToSZSc]]></openid>
+    <is_subscribe><![CDATA[Y]]></is_subscribe>
+    <trade_type><![CDATA[NATIVE]]></trade_type>
+    <bank_type><![CDATA[CFT]]></bank_type>
+    <total_fee>20</total_fee>
+    <fee_type><![CDATA[CNY]]></fee_type>
+    <transaction_id><![CDATA[1009000276201411250006190524]]></transaction_id>
+    <out_trade_no><![CDATA[R886426002_36GWA3XL]]></out_trade_no>
+    <attach><![CDATA[]]></attach>
+    <time_end><![CDATA[20141125182509]]></time_end>
+    <trade_state><![CDATA[SUCCESS]]></trade_state>
+    </xml>
+    '
+
+  end
+
 end

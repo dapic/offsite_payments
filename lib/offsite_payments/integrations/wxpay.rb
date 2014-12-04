@@ -13,23 +13,25 @@ module OffsitePayments#:nodoc:
       mattr_accessor :logger, :credentials
       mattr_reader :key, :appsecret
 
-      UNIFIEDORDER_URL = 'https://api.mch.weixin.qq.com/pay/unifiedorder'
-      ORDERQUERY_URL   = 'https://api.mch.weixin.qq.com/pay/orderquery'
-      CLOSEORDER_URL   = 'https://api.mch.weixin.qq.com/pay/closeorder'
-      REFUND_URL       = 'https://api.mch.weixin.qq.com/secapi/pay/refund'
-      REFUNDQUERY_URL  = 'https://api.mch.weixin.qq.com/pay/refundquery'
-      DOWNLOADBILL_URL = 'https://api.mch.weixin.qq.com/pay/downloadbill'
-      SHORTURL_URL     = 'https://api.mch.weixin.qq.com/tools/shorturl'
-
-      API_CONFIG = {
-        unifiedorder: { request_url: 'https://api.mch.weixin.qq.com/pay/unifiedorder' },
-        shorturl:     { request_url: 'https://api.mch.weixin.qq.com/tools/shorturl' },
-        orderquery:   { request_url: 'https://api.mch.weixin.qq.com/pay/orderquery'},
-      }
       FIELDS_NOT_TO_BE_SIGNED = %w(sign key)
 
       MONEY_FIELDS   = %w(total_fee coupon_fee)
       TIME_FIELDS    = %w(time_start time_expire time_end)
+
+      # helper classes are defined later, so we have to use symbols here. if we use constants, like 'UnifiedOrderHelper' instead of ':UnifiedOrderHelper', Ruby would complain
+      API_CONFIG = {
+        unifiedorder: { helper_type: :UnifiedOrderHelper , request_url: 'https://api.mch.weixin.qq.com/pay/unifiedorder' } ,
+        orderquery:   { helper_type: :OrderQueryHelper   , request_url: 'https://api.mch.weixin.qq.com/pay/orderquery'}    ,
+        closeorder:   { helper_type: :CloseOrderHelper   , request_url: 'https://api.mch.weixin.qq.com/pay/closeorder'}    ,
+        refund:       { helper_type: :RefundHelper       , request_url: 'https://api.mch.weixin.qq.com/secapi/pay/refund'} ,
+        refundquery:  { helper_type: :RefundQueryHelper  , request_url: 'https://api.mch.weixin.qq.com/pay/refundquery'}   ,
+        downloadbill: { helper_type: :DownloadBillHelper , request_url: 'https://api.mch.weixin.qq.com/pay/downloadbill'}  ,
+        shorturl:     { helper_type: :ShortUrlHelper     , request_url: 'https://api.mch.weixin.qq.com/tools/shorturl' }   ,
+      }
+
+      def self.get_helper(api_type, data)
+        self.const_get(API_CONFIG[api_type][:helper_type]).new(data)
+      end
 
       def self.notification(post, options = {})
         Notification.new(post, options)
@@ -63,8 +65,6 @@ module OffsitePayments#:nodoc:
 
       module Common
         def has_all_required_fields?
-          # logger.debug("required fields are #{self.class::REQUIRED_FIELDS.inspect}")
-          # logger.debug("has fields #{params}")
           !self.class.const_defined?(:REQUIRED_FIELDS) ||
             self.class::REQUIRED_FIELDS.all? {|f| params[f].present?}
         end
@@ -100,7 +100,7 @@ module OffsitePayments#:nodoc:
           Wxpay.credentials.each { |k,v| add_field(k,v)}
           biz_data.each { |k,v| add_field(k,v) }
           unless has_all_required_fields?
-            msg = "Requiring #{REQUIRED_FIELDS.sort.to_s} \n Getting #{Wxpay.credentials.merge(biz_data).keys.map(&:to_s).sort.to_s}"
+            msg = "Requiring #{self.class::REQUIRED_FIELDS.sort.to_s} \n Getting #{Wxpay.credentials.merge(biz_data).keys.map(&:to_s).sort.to_s}"
             raise "Not valid #{self.class.name}, because #{msg}"
           end
           self.class.logger = Wxpay.logger
@@ -133,7 +133,7 @@ module OffsitePayments#:nodoc:
         include ActiveMerchant::PostsData
         REQUIRED_FIELDS = %w(body out_trade_no total_fee spbill_create_ip notify_url trade_type) 
         API_REQUEST = :unifiedorder
-        def initialize(data)
+        def initialize(data )
           load_data(data)
         end
       end
@@ -246,6 +246,7 @@ module OffsitePayments#:nodoc:
         def self.parse_response(api_request, http_response)
           case api_request
           when :unifiedorder; UnifiedOrderResponse.new(http_response);
+          when :orderquery; OrderQueryResponse.new(http_response);
           when :shorturl; ShortUrlResponse.new(http_response);
           else raise "UnSupported Wxpay API request #{api_request.to_s}";
           end
@@ -262,6 +263,8 @@ module OffsitePayments#:nodoc:
           REQUIRED_FIELDS_BIZ_SUCCESS = %w(trade_state openid is_subscribe trade_type bank_type total_fee time_end)
           OPTIONAL_FIELDS_BIZ_SUCCESS = %w(device_info coupone_fee fee_type transaction_id out_trade_no attach)
           BaseResponse.setup_fields(REQUIRED_FIELDS_BIZ_SUCCESS + OPTIONAL_FIELDS_BIZ_SUCCESS)
+          alias_method :amount, :total_fee
+          alias_method :currency, :fee_type
         end
 
         class ShortUrlResponse < BaseResponse

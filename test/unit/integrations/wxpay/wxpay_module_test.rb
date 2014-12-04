@@ -37,4 +37,9 @@ class WxpayModuleTest < Test::Unit::TestCase
     assert_nil @helper.params['appsecret']
   end
 
+  def test_get_helper
+    @helper = Wxpay.get_helper(:unifiedorder, fixtures(:'wxpay-sample_data')[:unifiedorder_req])
+    assert_equal @helper.class, Wxpay::UnifiedOrderHelper
+  end
+
 end
