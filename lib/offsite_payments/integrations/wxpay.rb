@@ -24,8 +24,12 @@ module OffsitePayments#:nodoc:
       API_CONFIG = {
         unifiedorder: { request_url: 'https://api.mch.weixin.qq.com/pay/unifiedorder' },
         shorturl:     { request_url: 'https://api.mch.weixin.qq.com/tools/shorturl' },
+        orderquery:   { request_url: 'https://api.mch.weixin.qq.com/pay/orderquery'},
       }
       FIELDS_NOT_TO_BE_SIGNED = %w(sign key)
+
+      MONEY_FIELDS   = %w(total_fee coupon_fee)
+      TIME_FIELDS    = %w(time_start time_expire time_end)
 
       def self.notification(post, options = {})
         Notification.new(post, options)
@@ -118,19 +122,11 @@ module OffsitePayments#:nodoc:
           raise CommunicationError, @response.return_code unless @response.comm_success?
           raise CredentialMismatchError unless @response.credentials_match?(params)
           raise UnVerifiableResponseError  unless @response.acknowledge
-          #throw :error, [@response.biz_failure_code.to_sym, @response] unless @response.biz_success?
-
-          @response
-          #raise BusinessError, "#{@response.biz_failure_code}: #{@response.biz_failure_desc}" unless @response.biz_success?
-          #throw :done, [:comm_failure, @response.return_code] unless @response.comm_success?
-          #throw :done, [:credential_mismatch_failure, @response.params] unless @response.credentials_match?(params)
-          #throw :done, :unverifiable_response unless @response.acknowledge
-          #throw :done, [:biz_failure, @response.biz_failure_code, @response.biz_failure_desc] unless @response.biz_success?
-          #throw :done, @response
-          #
+          @response #let somebody upstream handle the biz logic
         end
       end
 
+      # These helper need to inherit from OffsitePayments::Helper therefore has to have CommomHelper mixed in
       class UnifiedOrderHelper < ::OffsitePayments::Helper 
         include Common
         include CommonHelper
@@ -142,6 +138,17 @@ module OffsitePayments#:nodoc:
         end
       end
 
+      class OrderQueryHelper < ::OffsitePayments::Helper
+        include Common
+        include CommonHelper
+        include ActiveMerchant::PostsData
+        REQUIRED_FIELDS = %w(out_trade_no) 
+        API_REQUEST = :orderquery
+        def initialize(data)
+          load_data(data)
+        end
+      end
+      
       class ShortUrlHelper < ::OffsitePayments::Helper
         include Common
         include CommonHelper
@@ -159,6 +166,32 @@ module OffsitePayments#:nodoc:
         attr_reader :params
         REQUIRED_FIELDS = %w(return_code)
         REQUIRED_RETURN_CREDENTIAILS = %w(appid mch_id)
+
+        def self.setup_fields(fields)
+          (fields).each do |param|
+            case 
+            when MONEY_FIELDS.include?(param)  
+              self.class_eval <<-EOF
+               def #{param}
+                 Money.new(params['#{param}'].to_i, currency)
+               end
+             EOF
+            when TIME_FIELDS.include?(param)
+              self.class_eval <<-EOF
+                def #{param}
+                  Time.parse params['#{param}']
+                end
+              EOF
+            else
+              self.class_eval <<-EOF
+                def #{param}
+                  params['#{param}']
+                end
+            EOF
+            end
+          end
+        end
+
         def initialize(http_response, options = {})
           Wxpay.logger.debug("response is #{http_response}")
           resp_xml = Nokogiri::XML(http_response.gsub(/\n/,'').gsub(/>\s*</, "><"))
@@ -203,38 +236,10 @@ module OffsitePayments#:nodoc:
       class Notification < BaseResponse
         include Common
         REQUIRED_FIELDS_BIZ_SUCCESS = %w(openid is_subscribe trade_type bank_type total_fee transaction_id out_trade_no time_end)
-
-        def amount
-          total_fee
-        end
-
-        def currency
-          fee_type
-        end
-
-        %w(openid is_subscribe trade_type bank_type fee_type transaction_id out_trade_no attach).each do |param|
-          self.class_eval <<-EOF
-            def #{param}
-              params['#{param}']
-            end
-            EOF
-        end
-
-        %w(total_fee transport_fee product_fee discount).each do |param|
-          self.class_eval <<-EOF
-             def #{param}
-               Money.new(params['#{param}'].to_i, currency)
-             end
-             EOF
-        end
-
-        %w(time_end).each do |param|
-          self.class_eval <<-EOF
-            def #{param}
-              Time.parse params['#{param}']
-            end
-            EOF
-        end
+        OPTIONAL_FIELDS_BIZ_SUCCESS = %w(coupon_fee fee_type attach return_msg)
+        BaseResponse.setup_fields(REQUIRED_FIELDS_BIZ_SUCCESS + OPTIONAL_FIELDS_BIZ_SUCCESS)
+        alias_method :amount, :total_fee
+        alias_method :currency, :fee_type
       end
 
       module ApiResponse
@@ -248,29 +253,21 @@ module OffsitePayments#:nodoc:
 
         class UnifiedOrderResponse < BaseResponse
           REQUIRED_FIELDS_BIZ_SUCCESS = %w(trade_type prepay_id)
+          OPTIONAL_FIELDS_BIZ_SUCCESS = %w(code_url)
+          BaseResponse.setup_fields(REQUIRED_FIELDS_BIZ_SUCCESS + OPTIONAL_FIELDS_BIZ_SUCCESS)
+          alias_method :pay_url, :code_url
+        end
 
-          def pay_url
-            code_url
-          end
-
-          %w(trade_type prepay_id code_url).each do |param|
-            self.class_eval <<-EOF
-            def #{param}
-              params['#{param}']
-            end
-            EOF
-          end
+        class OrderQueryResponse < BaseResponse
+          REQUIRED_FIELDS_BIZ_SUCCESS = %w(trade_state openid is_subscribe trade_type bank_type total_fee time_end)
+          OPTIONAL_FIELDS_BIZ_SUCCESS = %w(device_info coupone_fee fee_type transaction_id out_trade_no attach)
+          BaseResponse.setup_fields(REQUIRED_FIELDS_BIZ_SUCCESS + OPTIONAL_FIELDS_BIZ_SUCCESS)
         end
 
         class ShortUrlResponse < BaseResponse
           REQUIRED_FIELDS_BIZ_SUCCESS = %w(short_url)
-          %w(short_url).each do |param|
-            self.class_eval <<-EOF
-            def #{param}
-              params['#{param}']
-            end
-            EOF
-          end
+          OPTIONAL_FIELDS_BIZ_SUCCESS = []
+          BaseResponse.setup_fields(REQUIRED_FIELDS_BIZ_SUCCESS + OPTIONAL_FIELDS_BIZ_SUCCESS)
         end
       end
 
