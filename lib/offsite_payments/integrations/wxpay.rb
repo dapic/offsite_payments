@@ -15,7 +15,7 @@ module OffsitePayments#:nodoc:
 
       FIELDS_NOT_TO_BE_SIGNED = %w(sign key)
 
-      MONEY_FIELDS   = %w(total_fee coupon_fee)
+      MONEY_FIELDS   = %w(total_fee coupon_fee cash_fee)
       TIME_FIELDS    = %w(time_start time_expire time_end)
 
       # helper classes are defined later, so we have to use symbols here. if we use constants, like 'UnifiedOrderHelper' instead of ':UnifiedOrderHelper', Ruby would complain
@@ -38,8 +38,8 @@ module OffsitePayments#:nodoc:
       end
 
       def self.generate_signature(fields)
-        #logger.debug("fields are #{fields.inspect}")
-        #logger.debug("signed_string are #{signed_string(fields)}")
+        Wxpay.logger.debug("fields are #{fields.inspect}")
+        Wxpay.logger.debug("signed_string are #{signed_string(fields)}")
 
         Digest::MD5.hexdigest(signed_string(fields)).upcase
       end
@@ -193,18 +193,20 @@ module OffsitePayments#:nodoc:
         end
 
         def initialize(http_response, options = {})
-          Wxpay.logger.debug("response is #{http_response}")
+          Wxpay.logger.debug("response is #{http_response.inspect}")
+          #Rails.logger.debug("response is #{http_response}")
           resp_xml = Nokogiri::XML(http_response.gsub(/\n/,'').gsub(/>\s*</, "><"))
           @params = {}
 
           #logger.debug("resp_xml is #{resp_xml.to_xml}")
-          #logger.debug("resp_is #{resp_xml.to_s}")
+          Wxpay.logger.debug("resp_is #{resp_xml.to_s}")
+          #Rails.logger.debug("resp_is #{resp_xml.to_s}")
           #logger.debug('')
           resp_xml.xpath("//xml").children.each {|a|
             #logger.debug("assigning #{a.name} to #{a.content}")
-            @params[a.name] = a.content 
+            @params[a.name] = a.content if a.content.present?
           }
-          raise "Not valid #{self.class.name}" unless has_all_required_fields?
+          raise "Not valid #{self.class.name} \n respose is #{http_response}" unless has_all_required_fields?
         end
 
         def comm_success?
@@ -236,8 +238,9 @@ module OffsitePayments#:nodoc:
       class Notification < BaseResponse
         include Common
         REQUIRED_FIELDS_BIZ_SUCCESS = %w(openid is_subscribe trade_type bank_type total_fee transaction_id out_trade_no time_end)
-        OPTIONAL_FIELDS_BIZ_SUCCESS = %w(coupon_fee fee_type attach return_msg)
+        OPTIONAL_FIELDS_BIZ_SUCCESS = %w(coupon_fee fee_type attach return_msg cash_fee)
         BaseResponse.setup_fields(REQUIRED_FIELDS_BIZ_SUCCESS + OPTIONAL_FIELDS_BIZ_SUCCESS)
+        alias_method :success?, :biz_success?
         alias_method :amount, :total_fee
         alias_method :currency, :fee_type
       end
