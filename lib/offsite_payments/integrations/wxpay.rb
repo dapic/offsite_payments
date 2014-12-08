@@ -34,7 +34,17 @@ module OffsitePayments#:nodoc:
       end
 
       def self.notification(post, options = {})
-        Notification.new(post, options)
+        Notification.new(self.parse_xml(post), options)
+      end
+
+      def self.parse_xml(http_response)
+          resp_xml = Nokogiri::XML(http_response.gsub(/\n/,'').gsub(/>\s*</, "><"))
+          api_data = {}
+          Wxpay.logger.debug("resp_is #{resp_xml.to_s}")
+          resp_xml.xpath("//xml").children.each {|a|
+            api_data[a.name] = a.content if a.content.present?
+          }
+          api_data
       end
 
       def self.generate_signature(fields)
@@ -65,8 +75,9 @@ module OffsitePayments#:nodoc:
 
       module Common
         def has_all_required_fields?
-          !self.class.const_defined?(:REQUIRED_FIELDS) ||
-            self.class::REQUIRED_FIELDS.all? {|f| params[f].present?}
+          (!self.class.const_defined?(:REQUIRED_FIELDS) ||
+            self.class::REQUIRED_FIELDS.all? {|f| params[f].present?})
+          .tap {|r| Wxpay.logger.debug("#{self.class.name} requiring #{self.class::REQUIRED_FIELDS} but getting #{params}") unless r }
         end
 
         def params
@@ -82,10 +93,11 @@ module OffsitePayments#:nodoc:
           verify_signature || raise(ActionViewHelperError, "Invalid Wxpay HTTP signature")
         end
 
-        def to_xml
+        def to_xml(options = {})
+          Wxpay.logger.debug("#{__FILE__}:#{__LINE__}: options is #{options.inspect}")
           Nokogiri::XML::Builder.new do |x|
             x.xml {
-              form_fields.each {|k,v|
+              (form_fields rescue params).each {|k,v|
                 x.send(k) { x.cdata(v) }
               }
             }
@@ -192,21 +204,10 @@ module OffsitePayments#:nodoc:
           end
         end
 
-        def initialize(http_response, options = {})
-          Wxpay.logger.debug("response is #{http_response.inspect}")
-          #Rails.logger.debug("response is #{http_response}")
-          resp_xml = Nokogiri::XML(http_response.gsub(/\n/,'').gsub(/>\s*</, "><"))
-          @params = {}
-
-          #logger.debug("resp_xml is #{resp_xml.to_xml}")
-          Wxpay.logger.debug("resp_is #{resp_xml.to_s}")
-          #Rails.logger.debug("resp_is #{resp_xml.to_s}")
-          #logger.debug('')
-          resp_xml.xpath("//xml").children.each {|a|
-            #logger.debug("assigning #{a.name} to #{a.content}")
-            @params[a.name] = a.content if a.content.present?
-          }
-          raise "Not valid #{self.class.name} \n respose is #{http_response}" unless has_all_required_fields?
+        def initialize(data, options = {})
+          raise "#{data}" unless (data.is_a? Hash)
+          @params = data
+          raise "Not valid #{self.class.name} \n data is #{data} params is #{params}" unless has_all_required_fields?
         end
 
         def comm_success?
@@ -243,16 +244,34 @@ module OffsitePayments#:nodoc:
         alias_method :success?, :biz_success?
         alias_method :amount, :total_fee
         alias_method :currency, :fee_type
+        def api_response( response )
+          data = {}
+          case response
+          when :success
+            data['return_code'] = 'SUCCESS'
+          else
+            data['return_code'] = 'FAIL'
+            data['return_msg'] = response.to_s
+          end
+          ApiResponse::NotificationResponse.new(data)
+        end
       end
 
       module ApiResponse
         def self.parse_response(api_request, http_response)
+          api_data = Wxpay.parse_xml(http_response)
           case api_request
-          when :unifiedorder; UnifiedOrderResponse.new(http_response);
-          when :orderquery; OrderQueryResponse.new(http_response);
-          when :shorturl; ShortUrlResponse.new(http_response);
+          when :unifiedorder; UnifiedOrderResponse.new(api_data);
+          when :orderquery; OrderQueryResponse.new(api_data);
+          when :shorturl; ShortUrlResponse.new(api_data);
           else raise "UnSupported Wxpay API request #{api_request.to_s}";
           end
+        end
+
+        class NotificationResponse < BaseResponse
+        #  REQUIRED_FIELDS_BIZ_SUCCESS = %w(return_code)
+          OPTIONAL_FIELDS_BIZ_SUCCESS = %w(return_msg)
+          BaseResponse.setup_fields(OPTIONAL_FIELDS_BIZ_SUCCESS)
         end
 
         class UnifiedOrderResponse < BaseResponse

@@ -6,7 +6,7 @@ class WxpayNotificationTest < Test::Unit::TestCase
   def setup
     Wxpay.credentials = fixtures(:wxpay)
     Wxpay.logger.level = Logger::ERROR
-    @notification = Wxpay::Notification.new(notify_request)
+    @notification = Wxpay.notification(notify_request)
   end
 
   def test_accessors
@@ -43,6 +43,20 @@ class WxpayNotificationTest < Test::Unit::TestCase
   
   def test_respond_to_acknowledge
     assert @notification.respond_to?(:acknowledge)
+  end
+  
+  def test_respond_to_api_response
+    assert @notification.respond_to?(:api_response)
+  end
+  
+  def test_api_response
+    resp = @notification.api_response(:success)
+    assert (resp.is_a? Wxpay::ApiResponse::NotificationResponse), "resp is actually #{resp.class.ancestors}"
+    assert_equal '<?xml version="1.0"?>
+<xml>
+  <return_code><![CDATA[SUCCESS]]></return_code>
+</xml>
+', resp.to_xml
   end
   
   private
