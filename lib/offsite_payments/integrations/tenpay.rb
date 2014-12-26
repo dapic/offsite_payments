@@ -4,7 +4,7 @@ module OffsitePayments#:nodoc:
     # http://www.tenpay.com
     module Tenpay
 
-      mattr_accessor :service_url
+      mattr_accessor :service_url, :logger
       self.service_url = 'https://gw.tenpay.com/gateway/pay.htm'
       FIELDS_NOT_TO_BE_SIGNED = %w(sign)
 
@@ -19,8 +19,6 @@ module OffsitePayments#:nodoc:
       # Generate the required signature as specified in the "sign_type" field that's passed in in the "fields" argument
       # TODO: Only 'MD5' is supported at this point
       def self.generate_signature(fields, key)
-        #        log.debug("string to be signed by tenpay is #{signed_string(fields, key)}")
-        #puts ("string to be signed by tenpay is #{signed_string(fields, key)}")
         case sign_type = fields["sign_type"]
         when 'MD5'
           Digest::MD5.hexdigest(signed_string(fields, key)).upcase
@@ -41,6 +39,10 @@ module OffsitePayments#:nodoc:
           #s.join('=')
         end
         .join("&")+"&key=#{key}"
+      end
+
+      def self.logger
+        @@logger ||= Logger.new(STDOUT)
       end
 
       class Helper < OffsitePayments::Helper

@@ -3,7 +3,7 @@ module OffsitePayments #:nodoc:
   module Integrations #:nodoc:
     module Alipay
 
-      mattr_accessor :service_url
+      mattr_accessor :service_url, :logger
       self.service_url = 'https://mapi.alipay.com/gateway.do'
       FIELDS_NOT_TO_BE_SIGNED = %w(sign sign_type)
 
@@ -37,6 +37,10 @@ module OffsitePayments #:nodoc:
           s[0]+"="+CGI.unescape(s[1])
         end
         .join("&")+key
+      end
+
+      def self.logger
+        @@logger ||= Logger.new(STDOUT)
       end
 
       # the Helper is used to 
@@ -261,11 +265,11 @@ module OffsitePayments #:nodoc:
         end
 
         def verify
-          verify_params    = params.select{|k,v| %w(partner notify_id).include? k }.merge(service: :notify_verify)
+          verify_params    = params.select{|k,v| %w(partner notify_id).include? k }.merge(service: 'notify_verify')
           verify_url       = URI.parse(Alipay.service_url)
-          verify_url.query = verify_params.collect{|s|s[0]+"="+CGI.escape(s[1])}.join('&')
-          verify_response  = ActiveMerchant::Connection.new(verify_url).request(:get)
-          log.debug "#{verify_response.inspect}"
+          verify_url.query = verify_params.collect{|s|"#{s[0]}=#{CGI.escape(s[1])}"}.join('&')
+          verify_response  = ActiveMerchant::Connection.new(verify_url).request(:get, nil)
+          Alipay.logger.debug "Verify Response is: #{verify_response.inspect}"
           'true' == verify_response.body
         end
       end
