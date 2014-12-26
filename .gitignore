@@ -7,3 +7,4 @@ pkg
 # don't want to ship locked version requirements
 Gemfile.lock
 Gemfile*.lock
+.idea/
