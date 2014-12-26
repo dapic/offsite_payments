@@ -113,7 +113,7 @@ module OffsitePayments#:nodoc:
         def verify_signature
           #puts "sing in params: #{@params["sign"]}" unless @params["sign"] == Alipay.generate_signature(@params, @key)
           #puts Alipay.generate_signature(@params, @key)
-          @params["sign"] == Tenpay.generate_signature(@params, @key)
+          @params["sign"] == Tenpay.generate_signature(@params, @key) #.tap{|sig| puts "Generated sig #{sig}"}
         end
 
         def acknowledge

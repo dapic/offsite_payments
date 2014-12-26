@@ -688,6 +688,10 @@ swipe_checkout:
   api_key: f2fe4efd5033edfaed9e4aad319ef4d34536a10eea07f90f182616d7216ae2b8
   region: NZ
 
+tenpay:
+  partner: 1223440201
+  partner_key: '85507a59d4e54ca9d44d2d9a660c0fa2'
+
 trans_first:
   login: LOGIN
   password: PASSWORD
