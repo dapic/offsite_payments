@@ -1,5 +1,6 @@
 # encoding: utf-8
 #require 'wxpay/api_response'
+require 'weixin_authorize'
 module OffsitePayments#:nodoc:
   module Integrations #:nodoc:
     # http://mp.weixin.qq.com
@@ -11,7 +12,7 @@ module OffsitePayments#:nodoc:
       class UnVerifiableResponseError < RuntimeError; end
       class BusinessError < RuntimeError; end
       mattr_accessor :logger, :credentials
-      mattr_reader :key, :appsecret
+      mattr_reader :key, :appsecret, :auth_client
 
       FIELDS_NOT_TO_BE_SIGNED = %w(sign key)
 
@@ -71,6 +72,10 @@ module OffsitePayments#:nodoc:
 
       def self.logger
         @@logger ||= Logger.new(STDOUT)
+      end
+
+      def self.auth_client
+        @@auth_client ||= WeixinAuthorize::Client.new(@@credentials[:appid], @@appsecret) rescue nil
       end
 
       module Common

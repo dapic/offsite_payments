@@ -7,6 +7,10 @@ class WxpayModuleTest < Test::Unit::TestCase
     Wxpay.logger = nil
   end
 
+  def teardown
+    Wxpay.credentials = {}
+  end
+
   def test_has_default_implicit_logger
     assert_not_nil Wxpay.logger
   end
@@ -40,6 +44,12 @@ class WxpayModuleTest < Test::Unit::TestCase
   def test_get_helper
     @helper = Wxpay.get_helper(:unifiedorder, fixtures(:'wxpay-sample_data')[:unifiedorder_req])
     assert_equal @helper.class, Wxpay::UnifiedOrderHelper
+  end
+
+  def test_get_auth_client
+    Wxpay.credentials = fixtures(:wxpay)
+    @auth_client = Wxpay.auth_client
+    assert_not_nil @auth_client
   end
 
 end
