@@ -79,6 +79,35 @@ module OffsitePayments#:nodoc:
       end
 
       module Common
+        def self.included(klass)
+          fields = []
+          fields += klass::REQUIRED_FIELDS_BIZ_SUCCESS if klass.const_defined?(:REQUIRED_FIELDS_BIZ_SUCCESS)
+          fields += klass::OPTIONAL_FIELDS_BIZ_SUCCESS if klass.const_defined?(:OPTIONAL_FIELDS_BIZ_SUCCESS)
+
+          fields.each do |param|
+            case 
+            when MONEY_FIELDS.include?(param)  
+              klass.class_eval <<-EOF
+               def #{param}
+                 Money.new(params['#{param}'].to_i, currency)
+               end
+             EOF
+            when TIME_FIELDS.include?(param)
+              klass.class_eval <<-EOF
+                def #{param}
+                  Time.parse params['#{param}']
+                end
+              EOF
+            else
+              klass.class_eval <<-EOF
+                def #{param}
+                  params['#{param}']
+                end
+                EOF
+            end
+          end
+        end
+
         def has_all_required_fields?
           (!self.class.const_defined?(:REQUIRED_FIELDS) ||
             self.class::REQUIRED_FIELDS.all? {|f| params[f].present?})
@@ -145,8 +174,8 @@ module OffsitePayments#:nodoc:
 
       # These helper need to inherit from OffsitePayments::Helper therefore has to have CommomHelper mixed in
       class UnifiedOrderHelper < ::OffsitePayments::Helper 
-        include Common
-        include CommonHelper
+        include Wxpay::Common
+        include Wxpay::CommonHelper
         include ActiveMerchant::PostsData
         REQUIRED_FIELDS = %w(body out_trade_no total_fee spbill_create_ip notify_url trade_type) 
         API_REQUEST = :unifiedorder
@@ -156,58 +185,33 @@ module OffsitePayments#:nodoc:
       end
 
       class OrderQueryHelper < ::OffsitePayments::Helper
-        include Common
-        include CommonHelper
-        include ActiveMerchant::PostsData
         REQUIRED_FIELDS = %w(out_trade_no) 
         API_REQUEST = :orderquery
+        include Wxpay::Common
+        include Wxpay::CommonHelper
+        include ActiveMerchant::PostsData
         def initialize(data)
           load_data(data)
         end
       end
       
       class ShortUrlHelper < ::OffsitePayments::Helper
-        include Common
-        include CommonHelper
-        include ActiveMerchant::PostsData
         REQUIRED_FIELDS = %w(long_url) 
         API_REQUEST = :shorturl
+        include Wxpay::Common
+        include Wxpay::CommonHelper
+        include ActiveMerchant::PostsData
         def initialize(data)
           load_data(data)
         end
       end
 
       class BaseResponse
-        include Common
-        require 'nokogiri'
-        attr_reader :params
         REQUIRED_FIELDS = %w(return_code)
         REQUIRED_RETURN_CREDENTIAILS = %w(appid mch_id)
-
-        def self.setup_fields(fields)
-          (fields).each do |param|
-            case 
-            when MONEY_FIELDS.include?(param)  
-              self.class_eval <<-EOF
-               def #{param}
-                 Money.new(params['#{param}'].to_i, currency)
-               end
-             EOF
-            when TIME_FIELDS.include?(param)
-              self.class_eval <<-EOF
-                def #{param}
-                  Time.parse params['#{param}']
-                end
-              EOF
-            else
-              self.class_eval <<-EOF
-                def #{param}
-                  params['#{param}']
-                end
-            EOF
-            end
-          end
-        end
+        #include Wxpay::Common
+        require 'nokogiri'
+        attr_reader :params
 
         def initialize(data, options = {})
           raise "#{data}" unless (data.is_a? Hash)
@@ -242,10 +246,9 @@ module OffsitePayments#:nodoc:
 
       # For Wxpay, there is only Notification. No "Return"
       class Notification < BaseResponse
-        include Common
         REQUIRED_FIELDS_BIZ_SUCCESS = %w(openid is_subscribe trade_type bank_type total_fee transaction_id out_trade_no time_end)
         OPTIONAL_FIELDS_BIZ_SUCCESS = %w(coupon_fee fee_type attach return_msg cash_fee)
-        BaseResponse.setup_fields(REQUIRED_FIELDS_BIZ_SUCCESS + OPTIONAL_FIELDS_BIZ_SUCCESS)
+        include Wxpay::Common
         alias_method :success?, :biz_success?
         alias_method :amount, :total_fee
         alias_method :currency, :fee_type
@@ -263,6 +266,16 @@ module OffsitePayments#:nodoc:
       end
 
       module ApiResponse
+        module Common
+          def biz_payload
+            params.select {|k,v| 
+              (self.class::REQUIRED_FIELDS_BIZ_SUCCESS.include?(k) if self.class.const_defined?(:REQUIRED_FIELDS_BIZ_SUCCESS)) ||
+                (self.class::OPTIONAL_FIELDS_BIZ_SUCCESS.include?(k) if self.class.const_defined?(:OPTIONAL_FIELDS_BIZ_SUCCESS))
+            }
+          end
+
+        end
+
         def self.parse_response(api_request, http_response)
           api_data = Wxpay.parse_xml(http_response)
           case api_request
@@ -274,22 +287,25 @@ module OffsitePayments#:nodoc:
         end
 
         class NotificationResponse < BaseResponse
-        #  REQUIRED_FIELDS_BIZ_SUCCESS = %w(return_code)
+          #  REQUIRED_FIELDS_BIZ_SUCCESS = %w(return_code)
           OPTIONAL_FIELDS_BIZ_SUCCESS = %w(return_msg)
-          BaseResponse.setup_fields(OPTIONAL_FIELDS_BIZ_SUCCESS)
+          include Wxpay::Common
+          include ApiResponse::Common
         end
 
         class UnifiedOrderResponse < BaseResponse
           REQUIRED_FIELDS_BIZ_SUCCESS = %w(trade_type prepay_id)
           OPTIONAL_FIELDS_BIZ_SUCCESS = %w(code_url)
-          BaseResponse.setup_fields(REQUIRED_FIELDS_BIZ_SUCCESS + OPTIONAL_FIELDS_BIZ_SUCCESS)
+          include Wxpay::Common
+          include ApiResponse::Common
           alias_method :pay_url, :code_url
         end
 
         class OrderQueryResponse < BaseResponse
           REQUIRED_FIELDS_BIZ_SUCCESS = %w(trade_state openid is_subscribe trade_type bank_type total_fee time_end)
           OPTIONAL_FIELDS_BIZ_SUCCESS = %w(device_info coupone_fee fee_type transaction_id out_trade_no attach)
-          BaseResponse.setup_fields(REQUIRED_FIELDS_BIZ_SUCCESS + OPTIONAL_FIELDS_BIZ_SUCCESS)
+          include Wxpay::Common
+          include ApiResponse::Common
           alias_method :amount, :total_fee
           alias_method :currency, :fee_type
         end
@@ -297,7 +313,8 @@ module OffsitePayments#:nodoc:
         class ShortUrlResponse < BaseResponse
           REQUIRED_FIELDS_BIZ_SUCCESS = %w(short_url)
           OPTIONAL_FIELDS_BIZ_SUCCESS = []
-          BaseResponse.setup_fields(REQUIRED_FIELDS_BIZ_SUCCESS + OPTIONAL_FIELDS_BIZ_SUCCESS)
+          include Wxpay::Common
+          include ApiResponse::Common
         end
       end
 

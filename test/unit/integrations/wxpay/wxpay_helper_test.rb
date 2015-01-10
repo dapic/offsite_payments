@@ -47,6 +47,7 @@ class WxpayHelperTest < Test::Unit::TestCase
     assert @resp.comm_success?
     assert @resp.biz_success?
     assert_equal 'weixin://wxpay/bizpayurl?sr=tVLUP6i', @resp.pay_url
+    assert_equal 'weixin://wxpay/bizpayurl?sr=tVLUP6i', @resp.biz_payload['code_url']
   end
 
   private
