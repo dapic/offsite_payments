@@ -28,6 +28,7 @@ module OffsitePayments#:nodoc:
         refundquery:  { helper_type: :RefundQueryHelper  , request_url: 'https://api.mch.weixin.qq.com/pay/refundquery'}   ,
         downloadbill: { helper_type: :DownloadBillHelper , request_url: 'https://api.mch.weixin.qq.com/pay/downloadbill'}  ,
         shorturl:     { helper_type: :ShortUrlHelper     , request_url: 'https://api.mch.weixin.qq.com/tools/shorturl' }   ,
+        get_brand_wcpay: { helper_type: :GetBrandWCPayHelper, request_url: '' }   ,
       }
 
       def self.get_helper(api_type, data)
@@ -119,6 +120,7 @@ module OffsitePayments#:nodoc:
         end
 
         def verify_signature
+          #puts "generated #{Wxpay.generate_signature(@params)}"
           (@params["sign"] == Wxpay.generate_signature(@params))
           .tap {|r| Wxpay.logger.debug("#{__LINE__}: Got signature #{@params["sign"]} while expecting #{Wxpay.generate_signature(@params)}.") unless r }
         end
@@ -165,10 +167,34 @@ module OffsitePayments#:nodoc:
           post_response = ssl_post(API_CONFIG[self.class::API_REQUEST][:request_url], self.to_xml)
           Wxpay.logger.debug("got response from wxpay: #{post_response.inspect}")
           @response = ApiResponse.parse_response(self.class::API_REQUEST, post_response)
+          #puts "#{@response.inspect}"
           raise CommunicationError, @response.return_code unless @response.comm_success?
           raise CredentialMismatchError unless @response.credentials_match?(params)
           raise UnVerifiableResponseError  unless @response.acknowledge
           @response #let somebody upstream handle the biz logic
+        end
+      end
+
+      class GetBrandWCPayHelper < ::OffsitePayments::Helper
+        include Wxpay::Common
+        REQUIRED_FIELDS = %w(package) 
+        API_REQUEST = :get_brand_wcpay
+        def initialize(prepay_id)
+          @fields = {}
+          @fields['appId']    = Wxpay.credentials[:appid]
+          @fields['package']  = "prepay_id=#{prepay_id}"
+          @fields['signType'] = 'MD5'
+        end
+
+        def sign
+          @fields['timeStamp'] = Time.now().to_i.to_s
+          @fields['nonceStr']  = SecureRandom.hex
+          add_field('paySign', Wxpay.generate_signature(@fields))
+        end
+
+        def payload
+          @fields['paySign'] || sign
+          @fields
         end
       end
 
