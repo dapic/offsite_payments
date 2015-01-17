@@ -37,24 +37,12 @@ namespace :test do
     t.verbose = true
   end
 
-  Rake::TestTask.new(:alipay) do |t|
-    t.pattern = 'test/unit/integrations/alipay/*_test.rb'
-    t.ruby_opts << '-rubygems'
-    t.libs << 'test'
-    t.verbose = true
-  end
-
-  Rake::TestTask.new(:tenpay) do |t|
-    t.pattern = 'test/unit/integrations/tenpay/*_test.rb'
-    t.ruby_opts << '-rubygems'
-    t.libs << 'test'
-    t.verbose = true
-  end
-
-  Rake::TestTask.new(:wxpay) do |t|
-    t.pattern = 'test/unit/integrations/wxpay/*_test.rb'
-    t.ruby_opts << '-rubygems'
-    t.libs << 'test'
-    t.verbose = true
+  %w(alipay tenpay wxpay alipay_wap).each do |method|
+    Rake::TestTask.new(method) do |t|
+      t.pattern = "test/unit/integrations/#{method}/*_test.rb"
+      t.ruby_opts << '-rubygems'
+      t.libs << 'test'
+      t.verbose = true
+    end
   end
 end
