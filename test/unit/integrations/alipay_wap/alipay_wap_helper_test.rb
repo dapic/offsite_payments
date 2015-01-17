@@ -9,11 +9,18 @@ class AlipayWapHelperTest < Test::Unit::TestCase
     credentials[:pid] = 2088101000137799
     OffsitePayments::Integrations::AlipayWap.credentials = credentials
     @create_direct_req = CreateDirectHelper.new({})
-    @create_direct_req.form_fields['req_id'] = 1282889689836
+    @create_direct_req.protocol_fields['req_id'] = 1282889689836
   end
 
   def test_service_url_access
     assert_equal 'http://wappaygw.alipay.com/service/rest.htm', OffsitePayments::Integrations::AlipayWap.service_url 
+  end
+
+  def test_create_direct_helper_payload
+    payload = CreateDirectHelper.new({}).payload
+    assert_match(/^_input_charset=utf-8.*/, payload)
+    assert_match(/format=xml&partner=2088101000137799&/, payload)
+    assert_match /_input_charset=utf-8&format=xml&partner=2088101000137799&req_data=%3Cdirect_trade_create_req%3E%3Cseller_account_name%3Eareq22%40aliyun.com%3C%2Fseller_account_name%3E%3C%2Fdirect_trade_create_req%3E&req_id=\w{32}&sec_id=MD5&service=alipay.wap.trade.create.direct&sign=\w{32}&v=2.0/, payload
   end
 
   def test_create_create_direct_helper

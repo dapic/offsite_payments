@@ -5,105 +5,117 @@ module OffsitePayments #:nodoc:
 
       mattr_accessor :service_url, :logger, :credentials
       @@service_url = 'http://wappaygw.alipay.com/service/rest.htm'
-        #SERVICE_URL = 
-      FIELDS_NOT_TO_BE_SIGNED = %w(sign sign_type)
-
-      def self.credentials=(cred)
-        @@credentials = cred
-      end
 
       def self.logger
-        @@logger ||= Logger.new(STDOUT)
+        @@logger ||= (require 'logger'; Logger.new(STDOUT))
       end
 
-      ##########################################################################################################################
-      # Below is the WAP stuff
-      ##########################################################################################################################
-      module WapCommon
+      module Common
+        def request_fields
+          @protocol_fields.merge({'req_data' => payload_xml(@payload_fields)})
+        end
+
+        def assemble_post_params(param_fields)
+          param_fields.collect { |s| "#{s[0]}=#{CGI.escape(s[1])}" }.join('&')
+        end
+
       end
 
       module CredentialHelper
-      end
-
-      module SignHelper
-        FIELDS_NOT_TO_BE_SIGNED = 'sign'
-
-        def key
-          AlipayWap.credentials[:key]
+        def key;
+          AlipayWap.credentials[:key];
         end
 
+        def partner;
+          AlipayWap.credentials[:pid].to_s;
+        end
+
+        def seller_email;
+          AlipayWap.credentials[:seller][:email];
+        end
+      end
+
+      module SignatureProcessor
+        FIELDS_NOT_TO_BE_SIGNED = 'sign'
+
         def sign
-          @fields['sign'] ||= generate_signature
+          @protocol_fields['sign'] ||= generate_signature
         end
 
         def generate_signature
-          case sign_type = @fields["sec_id"]
-          when 'MD5'
-            Digest::MD5.hexdigest(signed_string)
-          when '0001' #RSA
-            raise OffsitePayments::ActionViewHelperError, "sign_type '0001' -> RSA not yet supported"
-          when nil
-            raise OffsitePayments::ActionViewHelperError, "'sign_type' must be specified in the fields"
-          else
-            raise OffsitePayments::ActionViewHelperError, "sign_type '#{sign_type}' not yet supported"
+          case sign_type = @protocol_fields['sec_id']
+            when 'MD5'
+              Digest::MD5.hexdigest(signed_string)
+            when '0001' #RSA
+              raise OffsitePayments::ActionViewHelperError, "sign_type '0001' -> RSA not yet supported"
+            when nil
+              raise OffsitePayments::ActionViewHelperError, "'sign_type' must be specified in the fields"
+            else
+              raise OffsitePayments::ActionViewHelperError, "sign_type '#{sign_type}' not yet supported"
           end
         end
 
-        # Generate the string to sign on from the fields. 
+        # Generate the string to sign on from all in @request_fields.
         # Currently Alipay doc specifies that the fields are arranged alphabetically except for data sent to "notify_url"
         def signed_string(sort_first = true)
-          signed_data_only = @fields.reject { |s| FIELDS_NOT_TO_BE_SIGNED.include?(s) }
-          ( sort_first ? signed_data_only.sort : signed_data_only )
-          .collect { |s| s[0]+"="+CGI.unescape(s[1]) }
-          .join("&") + key
+          signed_data_only = request_fields.reject { |s| FIELDS_NOT_TO_BE_SIGNED.include?(s) }
+          assemble_post_params(sort_first ? signed_data_only.sort : signed_data_only) + key
         end
 
         def acknowledge
-         ( @fields["sign"] == generate_signature ) || raise(SecurityError, "Invalid Alipay HTTP signature in #{self.class}")
+          (request_fields['sign'] == generate_signature) || raise(SecurityError, "Invalid Alipay HTTP signature in #{self.class}")
         end
       end
 
-      module OutgoingRequestHelper
+      #depends on the "payload" method
+      module OutgoingRequestProcessor
         def process
-          @post_response = ssl_post(SERVICE_URL, payload)
-          @response = parse_response #(self.class::API_REQUEST, post_response)
+          @post_response = ssl_post(AlipayWap.service_url, payload)
+          @response = parse_response
         end
 
         def parse_response
           case self.class
-          when CreateDirectHelper
-            CreateDirectResponse.new(@post_response, self)
-          else
-            raise "response class for #{self.class.name} not defined/implemented yet"
+            when CreateDirectHelper
+              CreateDirectResponse.new(@post_response, self)
+            else
+              raise "response class for #{self.class.name} not defined/implemented yet"
           end
         end
 
       end
-      class CreateDirectHelper < OffsitePayments::Helper
-        include WapCommon
-        include SignHelper
-        include OutgoingRequestHelper
+
+      class CreateDirectHelper #< OffsitePayments::Helper
+        include Common
+        include CredentialHelper
+        include SignatureProcessor
+        include OutgoingRequestProcessor
+        attr_accessor :protocol_fields, :payload_fields
+
+        PROTOCOL_STATIC_FIELDS = {
+            '_input_charset' => 'utf-8',
+            'service' => 'alipay.wap.trade.create.direct',
+            'format' => 'xml',
+            'v' => '2.0',
+            'sec_id' => 'MD5',
+        }
 
         def initialize(biz_data)
-          @biz_data = biz_data.merge(seller_account_name: AlipayWap.credentials[:seller][:email])
-          @fields = {
-            'partner' => AlipayWap.credentials[:pid].to_s,
-            'service' => 'alipay.wap.trade.create.direct',
-            'format'  => 'xml',
-            'v'       => '2.0',
-            'sec_id'  => 'MD5',
-            'req_id'  => SecureRandom.hex(16).to_s,
-            'req_data' => payload_xml(@biz_data),
-          }
+          @payload_fields = biz_data.merge(seller_account_name: seller_email)
+          @protocol_fields = PROTOCOL_STATIC_FIELDS.merge({
+                                                              'partner' => partner,
+                                                              'req_id' => SecureRandom.hex(16).to_s,
+                                                          })
+          #@fields = @protocol_fields.merge {'req_data' => payload_xml(@biz_data)}
           sign
         end
 
         def payload
-
+          assemble_post_params(request_fields.sort)
         end
 
         def payload_xml(biz_data)
-          xml = biz_data.map {|k, v| "<#{k}>#{v.encode(:xml => :text)}</#{k}>" }.join
+          xml = biz_data.map { |k, v| "<#{k}>#{v.encode(:xml => :text)}</#{k}>" }.join
           "<direct_trade_create_req>#{xml}</direct_trade_create_req>"
         end
 
@@ -111,7 +123,7 @@ module OffsitePayments #:nodoc:
 
       class CreateDirectResponse
         require 'nokogiri'
-        include SignHelper
+        include SignatureProcessor
         attr_reader :request_token, :error
         # ignore_signature_check should be used in testing only!
         def initialize(raw_response, req, ignore_signature_check = false)
@@ -121,33 +133,37 @@ module OffsitePayments #:nodoc:
 
         def parse(ignore_signature_check)
           raise TypeError unless @raw_response.is_a? String
-          @fields = @raw_response.split('&').inject({}) {|h, kv| k,v = kv.split('=',2); h[k] = v; h}
+          @protocol_fields = @raw_response.split('&').inject({}) { |h, kv| k, v = kv.split('=', 2); h[k] = v; h }
           credential_check
 
           case
-          when @fields.has_key?('res_data')
-            acknowledge unless ignore_signature_check
-            @request_token = Nokogiri::XML(@fields['res_data']).at_xpath("//request_token").content
-          when @fields.has_key?('res_error')
-            @error = Nokogiri::XML(@fields['res_error']).xpath('//err').children.inject({}) {|h,node|
-              h[node.name] = node.content.strip; h
-            }
-          else
-            raise "Invalid response format for #{self.class}"
+            when @protocol_fields.has_key?('res_data')
+              acknowledge unless ignore_signature_check
+              @request_token = Nokogiri::XML(@protocol_fields.delete('res_data')).at_xpath('//request_token').content
+            when @protocol_fields.has_key?('res_error')
+              @error = Nokogiri::XML(@protocol_fields.delete('res_error')).xpath('//err').children.inject({}) do |h, node|
+                h[node.name] = node.content.strip; h
+              end
+            else
+              raise "Invalid response format for #{self.class}"
           end
         end
 
         # verify if this response is for this request
         def credential_check
-          %w(partner req_id service v).all? {|k| @fields[k] == @request.form_fields[k].to_s } || raise("Response is not right")
+          %w(partner req_id service v).all? { |k|
+            # AlipayWap.logger.debug "#{k}: #{@protocol_fields[k]}<->#{@request.protocol_fields[k]}"
+            @protocol_fields[k] == @request.protocol_fields[k].to_s
+          } || raise("Response is not for this request")
         end
       end
 
-      class AuthAndExecuteHelper < OffsitePayments::Helper
-        include WapCommon
-        include SignHelper
+      class AuthAndExecuteHelper # < OffsitePayments::Helper
+        include Common
+        include CredentialHelper
+        include SignatureProcessor
       end
 
-    end#
-end
+    end #
+  end
 end
