@@ -18,7 +18,7 @@ module OffsitePayments #:nodoc:
 
       module Common
         def assemble_request_params(param_fields)
-          param_fields.collect { |s| "#{s[0]}=#{CGI.escape(s[1])}" }.join('&')
+          param_fields.collect { |s| "#{s[0]}=#{CGI.escape(s[1].to_s)}" }.join('&')
         end
       end
 
@@ -85,21 +85,21 @@ module OffsitePayments #:nodoc:
           case sign_type = (@protocol_fields['sec_id'] || AlipayWap.options['sign_type'])
             when 'MD5'
               Digest::MD5.hexdigest(signed_string)
-                  .tap { |r| AlipayWap.logger.debug("signature #{r} generated from signed_string #{signed_string}") }
+                  # .tap { |r| AlipayWap.logger.debug("signature #{r} generated from signed_string #{signed_string}") }
             when '0001' #RSA
-              raise OffsitePayments::ActionViewHelperError, "sign_type '0001' -> RSA not yet supported"
+              raise NotImplementedError, "sign_type '0001' -> RSA not yet supported"
             when nil
-              raise OffsitePayments::ActionViewHelperError, "'sign_type' must be specified in the fields or in module options"
+              raise ArgumentError, "'sign_type' must be specified in the fields or in module options"
             else
-              raise OffsitePayments::ActionViewHelperError, "sign_type '#{sign_type}' not yet supported"
+              raise NotImplementedError, "sign_type '#{sign_type}' not yet supported"
           end
         end
 
         # Generate the string to sign on from all in @request_fields.
         # Currently Alipay doc specifies that the fields are arranged alphabetically except for data sent to "notify_url"
-        def signed_string(sort_first = true)
+        def signed_string
           signed_data_only = request_fields.reject { |s| FIELDS_NOT_TO_BE_SIGNED.include?(s) }
-          assemble_request_params(sort_first ? signed_data_only.sort : signed_data_only) + key
+          signed_data_only.sort.collect { |s| "#{s[0]}=#{s[1]}" }.join('&') + key
         end
 
         def acknowledge
@@ -110,13 +110,15 @@ module OffsitePayments #:nodoc:
       #depends on the "payload" method
       module OutgoingRequestProcessor
         def process
+          AlipayWap.logger.debug "post payload is #{post_payload}"
           @post_response = ssl_post(AlipayWap.service_url, post_payload)
+          AlipayWap.logger.debug "post response is #{@post_response}"
           @response = parse_response
         end
 
         def parse_response
-          case self.class
-            when CreateDirectHelper
+          case
+            when self.is_a?(CreateDirectHelper)
               CreateDirectResponse.new(@post_response, self)
             else
               raise "response class for #{self.class.name} not defined/implemented yet"
@@ -131,29 +133,31 @@ module OffsitePayments #:nodoc:
         include CredentialHelper
         include SignatureProcessor
         include OutgoingRequestProcessor
+        include ActiveMerchant::PostsData
+
         attr_accessor :protocol_fields, :payload_fields
 
         PROTOCOL_STATIC_FIELDS = {
 
             'service' => 'alipay.wap.trade.create.direct',
-            'format' => 'xml',
-            'v' => '2.0',
+            'format'  => 'xml',
+            'v'       => '2.0',
         }
 
         def initialize(biz_data)
           @payload_fields = biz_data.merge(seller_account_name: seller_email)
           @protocol_fields = PROTOCOL_STATIC_FIELDS.merge(
               {
-                  '_input_charset' => AlipayWap.options[:_input_charset],
+                  # '_input_charset' => AlipayWap.options[:_input_charset],
                   'partner' => partner,
-                  'sec_id' => AlipayWap.options[:sign_type],
-                  'req_id' => SecureRandom.hex(16).to_s,
+                  'sec_id'  => AlipayWap.options[:sign_type],
+                  'req_id'  => SecureRandom.hex(16).to_s,
               })
           sign
         end
 
         def payload_xml(biz_data)
-          xml = biz_data.map { |k, v| "<#{k}>#{v.encode(:xml => :text)}</#{k}>" }.join
+          xml = biz_data.map { |k, v| "<#{k}>#{v.to_s.encode(:xml => :text)}</#{k}>" }.join
           "<direct_trade_create_req>#{xml}</direct_trade_create_req>"
         end
 
@@ -164,8 +168,10 @@ module OffsitePayments #:nodoc:
 
       class CreateDirectResponse
         require 'nokogiri'
+        include CredentialHelper
         include SignatureProcessor
         attr_reader :request_token, :error
+
         # ignore_signature_check should be used in testing only!
         def initialize(raw_response, req, ignore_signature_check = false)
           @raw_response, @request = raw_response, req
@@ -174,7 +180,8 @@ module OffsitePayments #:nodoc:
 
         def parse(ignore_signature_check)
           raise TypeError unless @raw_response.is_a? String
-          @protocol_fields = @raw_response.split('&').inject({}) { |h, kv| k, v = kv.split('=', 2); h[k] = v; h }
+          @raw_fields = @raw_response.split('&').inject({}) { |h, kv| k, v = kv.split('=', 2); h[k] = CGI.unescape(v); h }
+          @protocol_fields = @raw_fields
           credential_check
 
           case
@@ -193,9 +200,13 @@ module OffsitePayments #:nodoc:
         # verify if this response is for this request
         def credential_check
           %w(partner req_id service v).all? { |k|
-            # AlipayWap.logger.debug "#{k}: #{@protocol_fields[k]}<->#{@request.protocol_fields[k]}"
+             # AlipayWap.logger.debug "#{k}: #{@protocol_fields[k]}<->#{@request.protocol_fields[k]}"
             @protocol_fields[k] == @request.protocol_fields[k].to_s
           } || raise("Response is not for this request")
+        end
+
+        def request_fields
+          @raw_fields
         end
       end
 
@@ -208,8 +219,8 @@ module OffsitePayments #:nodoc:
 
         PROTOCOL_STATIC_FIELDS = {
             'service' => 'alipay.wap.auth.authAndExecute',
-            'format' => 'xml',
-            'v' => '2.0',
+            'format'  => 'xml',
+            'v'       => '2.0',
         }
 
         def initialize(biz_data)
