@@ -85,7 +85,7 @@ module OffsitePayments #:nodoc:
           case sign_type = (@protocol_fields['sec_id'] || AlipayWap.options['sign_type'])
             when 'MD5'
               Digest::MD5.hexdigest(signed_string)
-                  .tap { |r| AlipayWap.logger.debug("signature #{r} generated from signed_string #{signed_string}") }
+                  # .tap { |r| AlipayWap.logger.debug("signature #{r} generated from signed_string #{signed_string}") }
             when '0001' #RSA
               raise OffsitePayments::ActionViewHelperError, "sign_type '0001' -> RSA not yet supported"
             when nil
@@ -99,7 +99,7 @@ module OffsitePayments #:nodoc:
         # Currently Alipay doc specifies that the fields are arranged alphabetically except for data sent to "notify_url"
         def signed_string(sort_first = true)
           signed_data_only = request_fields.reject { |s| FIELDS_NOT_TO_BE_SIGNED.include?(s) }
-          assemble_request_params(sort_first ? signed_data_only.sort : signed_data_only) + key
+          signed_data_only.sort.collect { |s| "#{s[0]}=#{s[1]}" }.join('&') + key
         end
 
         def acknowledge
@@ -110,13 +110,15 @@ module OffsitePayments #:nodoc:
       #depends on the "payload" method
       module OutgoingRequestProcessor
         def process
+          puts "post payload is #{post_payload}"
           @post_response = ssl_post(AlipayWap.service_url, post_payload)
+          puts "post response is #{@post_response}"
           @response = parse_response
         end
 
         def parse_response
-          case self.class
-            when CreateDirectHelper
+          case
+            when self.is_a?(CreateDirectHelper)
               CreateDirectResponse.new(@post_response, self)
             else
               raise "response class for #{self.class.name} not defined/implemented yet"
@@ -131,6 +133,8 @@ module OffsitePayments #:nodoc:
         include CredentialHelper
         include SignatureProcessor
         include OutgoingRequestProcessor
+        include ActiveMerchant::PostsData
+
         attr_accessor :protocol_fields, :payload_fields
 
         PROTOCOL_STATIC_FIELDS = {
@@ -144,7 +148,7 @@ module OffsitePayments #:nodoc:
           @payload_fields = biz_data.merge(seller_account_name: seller_email)
           @protocol_fields = PROTOCOL_STATIC_FIELDS.merge(
               {
-                  '_input_charset' => AlipayWap.options[:_input_charset],
+                  # '_input_charset' => AlipayWap.options[:_input_charset],
                   'partner' => partner,
                   'sec_id' => AlipayWap.options[:sign_type],
                   'req_id' => SecureRandom.hex(16).to_s,
@@ -164,8 +168,10 @@ module OffsitePayments #:nodoc:
 
       class CreateDirectResponse
         require 'nokogiri'
+        include CredentialHelper
         include SignatureProcessor
         attr_reader :request_token, :error
+
         # ignore_signature_check should be used in testing only!
         def initialize(raw_response, req, ignore_signature_check = false)
           @raw_response, @request = raw_response, req
@@ -174,7 +180,8 @@ module OffsitePayments #:nodoc:
 
         def parse(ignore_signature_check)
           raise TypeError unless @raw_response.is_a? String
-          @protocol_fields = @raw_response.split('&').inject({}) { |h, kv| k, v = kv.split('=', 2); h[k] = v; h }
+          @raw_fields = @raw_response.split('&').inject({}) { |h, kv| k, v = kv.split('=', 2); h[k] = CGI.unescape(v); h }
+          @protocol_fields = @raw_fields
           credential_check
 
           case
@@ -193,9 +200,13 @@ module OffsitePayments #:nodoc:
         # verify if this response is for this request
         def credential_check
           %w(partner req_id service v).all? { |k|
-            # AlipayWap.logger.debug "#{k}: #{@protocol_fields[k]}<->#{@request.protocol_fields[k]}"
+             # AlipayWap.logger.debug "#{k}: #{@protocol_fields[k]}<->#{@request.protocol_fields[k]}"
             @protocol_fields[k] == @request.protocol_fields[k].to_s
           } || raise("Response is not for this request")
+        end
+
+        def request_fields
+          @raw_fields
         end
       end
 
