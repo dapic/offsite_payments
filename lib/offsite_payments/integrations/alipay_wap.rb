@@ -261,6 +261,7 @@ module OffsitePayments #:nodoc:
         def success?
           'success' == @params['result']
         end
+
       end
 
       class Notification < OffsitePayments::Notification
@@ -276,6 +277,8 @@ module OffsitePayments #:nodoc:
         alias_method :request_fields, :params
         alias_method :gross, :price
         alias_method :status, :trade_status
+        alias_method :transaction_id, :trade_no
+
         def initialize(request_string, opts = {})
           super
           protocol_parse(opts[:ignore_signature_check])
