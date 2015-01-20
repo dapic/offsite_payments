@@ -12,6 +12,14 @@ module OffsitePayments #:nodoc:
       MONEY_FIELDS = %w(total_fee price)
       TIME_FIELDS = %w(gmt_create gmt_payment gmt_close gmt_refund notify_time )
 
+      def self.notification(post, options = {})
+        Notification.new(post, options)
+      end
+
+      def self.return(post, options = {})
+        Return.new(post, options )
+      end
+
       def self.logger
         @@logger ||= (require 'logger'; Logger.new(STDOUT))
       end
@@ -62,7 +70,7 @@ module OffsitePayments #:nodoc:
 
       module CredentialHelper
         def key;
-          AlipayWap.credentials[:key];
+          @key ||= AlipayWap.credentials[:key];
         end
 
         def partner;
@@ -75,17 +83,17 @@ module OffsitePayments #:nodoc:
       end
 
       module SignatureProcessor
-        FIELDS_NOT_TO_BE_SIGNED = 'sign'
+        FIELDS_NOT_TO_BE_SIGNED = 'sign sign_type'
 
         def sign
           @protocol_fields['sign'] ||= generate_signature
         end
 
         def generate_signature
-          case sign_type = (@protocol_fields['sec_id'] || AlipayWap.options['sign_type'])
+          case sign_type = (@protocol_fields['sec_id'] || AlipayWap.options[:sign_type])
             when 'MD5'
               Digest::MD5.hexdigest(signed_string)
-                  # .tap { |r| AlipayWap.logger.debug("signature #{r} generated from signed_string #{signed_string}") }
+                   .tap { |r| AlipayWap.logger.debug("signature '#{r}' generated from signed_string '#{signed_string}'") }
             when '0001' #RSA
               raise NotImplementedError, "sign_type '0001' -> RSA not yet supported"
             when nil
@@ -249,8 +257,9 @@ module OffsitePayments #:nodoc:
       end
 
       class Return < ::OffsitePayments::Return
-        PAYLOAD_DATA_FIELDS = %w(request_token)
+        PAYLOAD_DATA_FIELDS = %w(out_trade_no trade_no request_token)
         include Common
+        include CredentialHelper
         include AttributesHelper
         include SignatureProcessor
         attr_accessor :payload_fields
@@ -258,19 +267,17 @@ module OffsitePayments #:nodoc:
 
         def initialize(request_string, opts = {})
           super
-          protocol_parse(opts[:ignore_signature_check])
+          @key = opts[:key]
+          protocol_parse
         end
 
-        def protocol_parse(ignore_signature_check)
-          @protocol_fields = @params
-          acknowledge unless ignore_signature_check
-          @payload_fields = {
-              'request_token' => @params['request_token']
-          }
+        def protocol_parse
+          @protocol_fields = @params.reject {|k,v| PAYLOAD_DATA_FIELDS.include? k}
+          @payload_fields = @params.select {|k,v| PAYLOAD_DATA_FIELDS.include? k}
         end
 
         def success?
-          'success' == @params['result']
+          'success' == @protocol_fields['result']
         end
 
       end
@@ -281,8 +288,9 @@ module OffsitePayments #:nodoc:
           price buyer_id notify_id use_coupon refund_status gmt_refund)
 
         include RequestCommon
-        include SignatureProcessor
+        include CredentialHelper
         include AttributesHelper
+        include SignatureProcessor
         attr_accessor :protocol_fields, :payload_fields
 
         alias_method :request_fields, :params
@@ -292,12 +300,12 @@ module OffsitePayments #:nodoc:
 
         def initialize(request_string, opts = {})
           super
-          protocol_parse(opts[:ignore_signature_check])
+          @key = opts[:key]
+          protocol_parse
         end
 
-        def protocol_parse(ignore_signature_check)
-          @protocol_fields = @params
-          acknowledge unless ignore_signature_check
+        def protocol_parse
+          @protocol_fields = @params.clone
           @payload_fields = Nokogiri::XML(@protocol_fields.delete('notify_data')).xpath('//notify').children.inject({}) do |h, node|
             h[node.name] = node.content.strip; h
           end
@@ -311,9 +319,9 @@ module OffsitePayments #:nodoc:
           %w(TRADE_FINISHED TRADE_SUCCESS).include? status
         end
 
+        # this order is explicitly set. the Doc is kinda vague but this is found through trial-and-error
         def signed_string
-          #removed_string = "sign=#{params['sign']}"
-          raw.sub("sign=#{params['sign']}", '')
+          "service=#{params['service']}&v=#{params['v']}&sec_id=#{params['sec_id']}&notify_data=#{params['notify_data']}#{key}"
         end
       end
 
