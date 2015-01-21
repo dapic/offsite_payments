@@ -9,7 +9,6 @@ module OffsitePayments #:nodoc:
           _input_charset: 'utf-8',
           sign_type: 'MD5',
       }
-      MONEY_FIELDS = %w(total_fee price)
       TIME_FIELDS = %w(gmt_create gmt_payment gmt_close gmt_refund notify_time )
 
       def self.notification(post, options = {})
@@ -38,12 +37,6 @@ module OffsitePayments #:nodoc:
 
           fields.each do |param|
             case
-              when MONEY_FIELDS.include?(param)
-                klass.class_eval <<-EOF
-               def #{param}
-                 Money.new(payload_fields['#{param}'].to_i*100, currency)
-               end
-                EOF
               when TIME_FIELDS.include?(param)
                 klass.class_eval <<-EOF
                 def #{param}
@@ -294,7 +287,7 @@ module OffsitePayments #:nodoc:
         attr_accessor :protocol_fields, :payload_fields
 
         alias_method :request_fields, :params
-        alias_method :gross, :price
+        alias_method :gross, :total_fee
         alias_method :status, :trade_status
         alias_method :transaction_id, :trade_no
 

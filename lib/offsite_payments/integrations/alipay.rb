@@ -245,6 +245,7 @@ module OffsitePayments #:nodoc:
       class Notification < OffsitePayments::Notification
         include Common
         REQUIED_FIELDS = %w(notify_time notify_type notify_id sign_type sign)
+        alias_method :gross, :total_fee
 
         def initialize(post, options = {})
           super
@@ -256,21 +257,23 @@ module OffsitePayments #:nodoc:
           trade_status == 'WAIT_BUYER_PAY'
         end
 
-        def gross
-          @params['price']
-        end
-
         def currency
           @params['currency'] || 'CNY'
         end
 
         def verify
-          verify_params    = params.select{|k,v| %w(partner notify_id).include? k }.merge(service: 'notify_verify')
+          verify_params    = {
+            partner: seller_id,
+            notify_id: notify_id,
+            service: 'notify_verify'
+          }
           verify_url       = URI.parse(Alipay.service_url)
           verify_url.query = verify_params.collect{|s|"#{s[0]}=#{CGI.escape(s[1])}"}.join('&')
           verify_response  = ActiveMerchant::Connection.new(verify_url).request(:get, nil)
+          Alipay.logger.debug "Verify Response is: #{verify_url.query.inspect}"
           Alipay.logger.debug "Verify Response is: #{verify_response.inspect}"
-          'true' == verify_response.body
+          Alipay.logger.debug "Verify Response is: #{verify_response.body}"
+          'true' == verify_response.body.strip
         end
       end
 
@@ -278,6 +281,7 @@ module OffsitePayments #:nodoc:
         include Common
         REQUIRED_FIELDS =  %w(is_success sign_type sign)
         FIELDS_NOT_TO_BE_UNESCAPED_WHEN_PARSING = %w(notify_id)
+        alias_method :gross, :total_fee
 
         def initialize(post, options = {})
           super
@@ -289,13 +293,8 @@ module OffsitePayments #:nodoc:
           @params["out_trade_no"]
         end
 
-        def amount
-          @params["total_fee"]
-        end
-
         def message
-          #          @message
-          "#{out_trade_no},#{Money.new(amount*100, 'CNY')} => #{trade_status}"
+          "#{out_trade_no},#{amount} => #{trade_status}"
         end
 
         ['exterface'].each do |param|
