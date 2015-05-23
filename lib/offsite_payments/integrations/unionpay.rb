@@ -67,7 +67,7 @@ module OffsitePayments #:nodoc:
         def generate_signature
           sha1x16 = Digest::SHA1.hexdigest(signed_string).tap{|s| puts "sha1x16 #{s}"}
           enc = key.sign(OpenSSL::Digest::SHA1.new, sha1x16).tap{|s| puts "enc  #{s}"}
-          Base64.encode64(enc).tap{|s| puts "final:  #{s}"}
+          Base64.strict_encode64(enc).tap{|s| puts "final:  #{s}"}
         end
 
         # Generate the string to sign on from all in @request_fields.
@@ -89,7 +89,7 @@ module OffsitePayments #:nodoc:
           include SignatureProcessor
           PROTOCOL_STATIC_FIELDS = {
               'version' => '5.0.0', #版本号
-              'encoding' => 'UTF-8', #编码方式
+              'encoding' => 'utf-8', #编码方式
               'txnType' => '01', #交易类型
               'txnSubType' => '01', #交易子类
               'bizType' => '000201', #业务类型, 'B2C网关支付'
