@@ -240,6 +240,9 @@ module OffsitePayments #:nodoc:
               EOF
          end
 
+        def transaction_id
+          trade_no
+        end
       end
 
       class Notification < OffsitePayments::Notification
