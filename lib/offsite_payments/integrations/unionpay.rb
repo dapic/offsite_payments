@@ -222,7 +222,7 @@ module OffsitePayments #:nodoc:
       end
 
       class Notification < OffsitePayments::Notification
-        REQUIRED_FIELDS = %w(certId signature signMethod txnType txnSubType bizType accessType merId orderId txnTime txnAmt currencyCode reqReserved queryId respCode respMsg settleAmt settleCurrencyCode settleDate traceNo traceTime)
+        REQUIRED_FIELDS = %w(certId signature signMethod txnType txnSubType bizType accessType merId orderId txnTime txnAmt currencyCode queryId respCode respMsg settleAmt settleCurrencyCode settleDate traceNo traceTime)
 
         include Common
         include CredentialHelper
