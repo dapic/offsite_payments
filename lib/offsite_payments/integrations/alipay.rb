@@ -3,7 +3,7 @@ module OffsitePayments #:nodoc:
   module Integrations #:nodoc:
     module Alipay
 
-      mattr_accessor :service_url, :logger
+      mattr_accessor :service_url, :credentials, :logger
       self.service_url = 'https://mapi.alipay.com/gateway.do'
       FIELDS_NOT_TO_BE_SIGNED = %w(sign sign_type)
 

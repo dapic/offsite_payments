@@ -4,7 +4,7 @@ module OffsitePayments#:nodoc:
     # http://www.tenpay.com
     module Tenpay
 
-      mattr_accessor :service_url, :logger
+      mattr_accessor :service_url, :credentials, :logger
       self.service_url = 'https://gw.tenpay.com/gateway/pay.htm'
       FIELDS_NOT_TO_BE_SIGNED = %w(sign)
 
