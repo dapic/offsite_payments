@@ -86,7 +86,7 @@ module OffsitePayments #:nodoc:
                   else # at current time (2015-05-25) no other signing method is mentioned in Unionpay's official docs
                     raise "sign method #{form_fields['signMethod']} is not implemented yet."
                 end
-          Base64.strict_encode64(enc) # has to be strict_encode64, not encode64, as the lattter as an extra '\n'
+          Base64.strict_encode64(enc) # has to be strict_encode64, not encode64, as the latter as an extra '\n'
               .tap { |s| logger.debug "final:  #{s}" }
         end
 
