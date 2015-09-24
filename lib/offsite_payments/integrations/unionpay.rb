@@ -5,11 +5,11 @@ module OffsitePayments #:nodoc:
   module Integrations #:nodoc:
     module Unionpay
 
-      mattr_accessor :service_url, :credentials, :options
+      mattr_accessor :credentials, :options
       mattr_writer :logger
 
-      # this should be modified when initializing the Unionpay module
-      self.service_url = 'https://101.231.204.80:5000/gateway/api/frontTransReq.do'
+      @@production_url = 'https://gateway.95516.com/gateway/api/frontTransReq.do'.freeze
+      @@sandbox_url = 'https://101.231.204.80:5000/gateway/api/frontTransReq.do'.freeze
 
       def self.notification(post, options = {})
         Notification.new(post, options)
@@ -21,6 +21,17 @@ module OffsitePayments #:nodoc:
 
       def self.logger
         @@logger ||= Logger.new(STDOUT)
+      end
+
+      def self.service_url
+        case OffsitePayments.mode
+          when :production
+            @@production_url
+          when :test
+            @@sandbox_url
+          else
+            raise StandardError, "Integration mode set to an invalid value: #{mode}"
+        end
       end
 
       module Common
@@ -61,6 +72,10 @@ module OffsitePayments #:nodoc:
 
         def certificate_password
           Unionpay.credentials[:cert_password]
+        end
+
+        def credential_based_url
+          Unionpay.credentials[:service_url] || Unionpay.service_url
         end
       end
 
