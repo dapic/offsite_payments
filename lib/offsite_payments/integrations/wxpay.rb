@@ -31,6 +31,7 @@ module OffsitePayments#:nodoc:
         get_brand_wcpay: { helper_type: :GetBrandWCPayHelper, request_url: '' }   ,
       }
 
+      REQUIRED_CREDENTIAL_SETTINGS = [:api_key, :appsecret].freeze
       def self.get_helper(api_type, data)
         self.const_get(API_CONFIG[api_type][:helper_type]).new(data)
       end
@@ -66,7 +67,8 @@ module OffsitePayments#:nodoc:
       end
 
       def self.credentials=(cred)
-        @@key         = cred.delete(:key)
+        (REQUIRED_CREDENTIAL_SETTINGS - cred.keys).tap { |missing_keys| missing_keys.empty? || raise("缺乏必要的账户信息#{missing_keys}。只有#{cred.keys}") }
+        @@key = cred.delete(:api_key)
         @@appsecret   = cred.delete(:appsecret)
         @@credentials = cred
       end
