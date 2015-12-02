@@ -26,7 +26,7 @@ Gem::Specification.new do |s|
   s.add_dependency('i18n', '~> 0.5')
   s.add_dependency('money', '< 7.0.0')
   s.add_dependency('builder', '>= 2.1.2', '< 4.0.0')
-  s.add_dependency('json', '~> 1.7')
+  s.add_dependency('json', '~> 1.8.3')
   s.add_dependency('active_utils', '~> 2.2.0')
   s.add_dependency('nokogiri', "~> 1.4")
   s.add_runtime_dependency('weixin_authorize')
@@ -35,4 +35,5 @@ Gem::Specification.new do |s|
   s.add_development_dependency('mocha', '~> 0.13.0')
   s.add_development_dependency('rails', '>= 3.2.14')
   s.add_development_dependency('thor')
+  s.add_development_dependency('test-unit-minitest')
 end
